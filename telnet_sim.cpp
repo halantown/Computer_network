@@ -5,6 +5,7 @@
 #include <map>
 #include <queue>
 #include <stdexcept>
+#include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -58,6 +59,7 @@ char telnet_cmd_buf[BUFFSIZE];
 queue<string> command_buf;
 map<int, string> telnet_code;
 bool debug = false;
+int optval = 1;
 // class SimpleException : public exception{
 // public:
 //     SimpleException(const string& message) : message_(message) {}
@@ -71,7 +73,11 @@ bool debug = false;
 // };
 
 
-
+void signalHandler(int signum) {
+    print_log("Received signal: Interruption\n");
+    recv(connfd, recv_buf, sizeof(recv_buf), MSG_DONTWAIT);
+    
+}
 
 void close_server(int p){
     close(sockfd); // 关闭服务端 socket
@@ -188,14 +194,9 @@ int send_message(){
             if(strncmp(send_str, END_STRING, strlen(END_STRING)) == 0) break;
             if(send_str[0] == '@'){
                 // enter command mode
-                send_str[0] = ' ';
-                trim_str(send_str);
-                string cmd1="1";
-                if(cmd1 == "send"){
-
-                }
-            }
-            if(send(sockfd, send_str, strlen(send_str)+1, 0) < 0){
+                const char* oob_data = "!";
+                send(sockfd, oob_data, strlen(oob_data), MSG_OOB);
+            }else if(send(sockfd, send_str, strlen(send_str)+1, 0) < 0){
                 // todo error
                 printf("error 156");
             }
@@ -258,7 +259,8 @@ int listening_connection(){
     int pid;
     socklen_t cli_len = sizeof(cli_addr);
     signal(SIGINT, close_server);
-
+    signal(SIGURG, signalHandler);
+    
     while((connfd = accept(sockfd, (struct sockaddr*)&cli_addr, &cli_len))){
         if(-1 == connfd){
             printf("Accept error(%d): %s\n", errno, strerror(errno)); // 如果接受失败，输出错误信息
@@ -333,6 +335,9 @@ int listening_connection(){
                 printf("child pid = [%d], listening.....\n ", pid);
 
                 dup2(connfd, STDOUT_FILENO);
+                setsockopt(connfd, SOL_SOCKET, SO_OOBINLINE, &optval, sizeof(optval));
+                fcntl(connfd, F_SETOWN, getpid());
+
                 while(1){
                     int filled = 0;
                     while (true)
@@ -461,6 +466,7 @@ int listening_connection(){
         // send(connfd, send_str, strlen(send_str), 0);
         // close(connfd);
     }
+    return 0;
 }
 
 inline void send_IAC_sequence(int fd){

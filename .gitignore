@@ -1,0 +1,8 @@
+.vscode/*
+*.dSYM
+vscode_/*
+client*
+server*
+test*
+telnet_sim
+telnet_sim copy*
